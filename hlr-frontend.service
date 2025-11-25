@@ -1,0 +1,28 @@
+[Unit]
+Description=HLR Frontend React Dev Server
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/hlr_frontend_control
+
+Environment="NODE_ENV=development"
+Environment="HOST=0.0.0.0"
+Environment="PORT=5173"
+Environment="CHOKIDAR_USEPOLLING=true"
+
+ExecStart=/usr/bin/npm run dev -- --host=0.0.0.0 --port=5173
+
+
+Restart=always
+RestartSec=3
+
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
