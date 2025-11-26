@@ -17,6 +17,16 @@ type Row = {
   mode?: number | null; // 0..5 จาก interlock_4c, exhaust = null
 };
 
+// --- map mode → label
+const MODE_LABEL: Record<number, string> = {
+  0: "Manual mode",
+  1: "Standby mode",
+  2: "Scrubbing mode",
+  3: "Regen mode",
+  4: "Cooldown mode",
+  5: "Alarming",
+};
+
 // --- 1) นาฬิกา 1Hz และหน้าต่างเวลาเลื่อน abcDEF99
 const useNowTicker = (intervalMs: number) => {
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -231,8 +241,8 @@ const Dashboard = () => {
   };
 
   const [timeHis, setTimeHis] = useState(1800000);
-  const [isNewestIAQ, setNewestIAQ] = useState<any[]>();
-  const [modeOperate, setModeOperate] = useState("");
+  const [isNewestIAQ, setNewestIAQ] = useState<any[]>([]);
+  const [modeOperate, setModeOperate] = useState("Mode: -");
   const [iaq, setIaq] = useState<Row[]>([]);
   const latesttimeRef = useRef<number>(0);
   const nowMs = useNowTicker(10000);
@@ -251,7 +261,6 @@ const Dashboard = () => {
     {
       refreshInterval: 100000,
       onSuccess: (d: Row[]) => {
-        // console.log(d);
         if (!d?.length) return;
         latesttimeRef.current = d[d.length - 1].timestamp;
         setIaq((prev) => {
@@ -267,7 +276,6 @@ const Dashboard = () => {
             .filter((r) => r.timestamp >= cutoff)
             .sort((a, b) => a.timestamp - b.timestamp);
         });
-        getLastestIAQData(d);
       },
     }
   );
@@ -298,66 +306,93 @@ const Dashboard = () => {
       payload
     );
     setIaq(newData.data);
-    getLastestIAQData(newData.data);
   };
 
   useEffect(() => {
     handleExport();
   }, [timeHis]);
 
-  const getLastestIAQData = (data: Row[]) => {
-    const fallback = {
-      id: "-",
-      label: "",
-      sensor_id: 0,
-      timestamp: 0,
-      co2: 0,
-      humidity: 0,
-      temperature: 0,
-      mode: "",
+  // --- คำนวณค่า latest ของแต่ละ sensor_id จาก iaq ทุกครั้งที่ iaq เปลี่ยน
+  const getLastestIAQData = (rows: Row[]) => {
+    // เตรียม fallback สำหรับแต่ละ sensor
+    const fallbackMap: Record<string, any> = {
+      before_exhaust: {
+        id: "-",
+        label: "Inlet (Before Exhaust)",
+        sensor_id: "before_exhaust",
+        timestamp: 0,
+        co2: null,
+        humidity: null,
+        temperature: null,
+        mode: null,
+      },
+      after_exhausts: {
+        id: "-",
+        label: "Outlet (After Exhaust)",
+        sensor_id: "after_exhausts",
+        timestamp: 0,
+        co2: null,
+        humidity: null,
+        temperature: null,
+        mode: null,
+      },
+      interlock_4c: {
+        id: "-",
+        label: "Interlock 4C",
+        sensor_id: "interlock_4c",
+        timestamp: 0,
+        co2: null,
+        humidity: null,
+        temperature: null,
+        mode: null,
+      },
     };
 
-    const latestBySid = new Map<string, any>();
+    const targetSensors = ["before_exhaust", "after_exhausts", "interlock_4c"];
 
-    for (const el of data) {
+    // clone fallback
+    const latest: Record<string, any> = {
+      before_exhaust: { ...fallbackMap.before_exhaust },
+      after_exhausts: { ...fallbackMap.after_exhausts },
+      interlock_4c: { ...fallbackMap.interlock_4c },
+    };
+
+    for (const el of rows) {
       const sid = String(el.sensor_id);
-      const existing = latestBySid.get(sid);
-      if (!existing || existing.timestamp < el.timestamp) {
-        latestBySid.set(sid, {
+      if (!targetSensors.includes(sid)) continue;
+
+      const current = latest[sid];
+      if (!current || el.timestamp > current.timestamp) {
+        latest[sid] = {
           id: el.id ?? `${sid}-${el.timestamp}`,
-          label:
-            sid === "before_exhaust"
-              ? "Inlet (Before Exhaust)"
-              : sid === "after_exhausts"
-              ? "Outlet (After Exhaust)"
-              : sid === "interlock_4c" || sid === "4"
-              ? "Interlock 4C"
-              : `Sensor ${sid}`,
+          label: fallbackMap[sid].label,
           sensor_id: sid,
           timestamp: el.timestamp,
-          co2: el.co2 ?? 0,
-          humidity: el.humidity ?? 0,
-          temperature: el.temperature ?? el.temp ?? 0,
-          mode: el.mode ?? "",
-        });
+          co2: el.co2 ?? null,
+          humidity: el.humidity ?? null,
+          temperature: el.temperature ?? el.temp ?? null,
+          mode: el.mode ?? null,
+        };
       }
     }
 
-    const latest1 = latestBySid.get("before_exhaust") ?? fallback;
-    const latest2 = latestBySid.get("after_exhausts") ?? fallback;
-    const latest3 =
-      latestBySid.get("interlock_4c") ?? latestBySid.get("4") ?? fallback;
-    const latest4 = fallback;
+    const latestBefore = latest["before_exhaust"];
+    const latestAfter = latest["after_exhausts"];
+    const latestInterlock = latest["interlock_4c"];
 
-    const arrayData = [latest1, latest2, latest3, latest4];
-    setNewestIAQ(arrayData);
+    setNewestIAQ([latestBefore, latestAfter, latestInterlock]);
 
-    // ถ้าอยากแสดง mode ปัจจุบันใน text ด้านบนในอนาคต เอาข้างล่างไปใช้ได้
-    const inter = latest3;
-    if (inter && inter.mode !== "" && inter.timestamp > 0) {
-      setModeOperate(`Mode: ${inter.mode}`); // ตอนนี้ยังไม่ใช้ mapping เป็นชื่อโหมด
+    const m = latestInterlock.mode;
+    if (typeof m === "number" && m in MODE_LABEL) {
+      setModeOperate(`Mode: ${MODE_LABEL[m]}`);
+    } else {
+      setModeOperate("Mode: -");
     }
   };
+
+  useEffect(() => {
+    getLastestIAQData(iaq);
+  }, [iaq]);
 
   // --- highlight bands จาก interlock_4c
   const modeBands = useMemo(
@@ -539,48 +574,46 @@ const Dashboard = () => {
 
         <div className="">
           <div className="ml-5 mr-5 border-[1px] border-gray-500 rounded-md h-[100%]  p-3 pb-8">
-            {isNewestIAQ?.map((el: any, index: number) => {
-              if (el.id !== "-") {
-                return (
-                  <div key={index}>
-                    <div className="mt-5 mb-5 ml-3">
-                      <span className="border-b-[1px]">Sensor: {el.label}</span>
-                      <span className="text-[13px] text-gray-600 ml-5">
-                        Update {new Date(el.timestamp).getDate()}/
-                        {new Date(el.timestamp).getMonth() + 1}/
-                        {new Date(el.timestamp).getFullYear()}{" "}
-                        {new Date(el.timestamp).getHours()}:
-                        {new Date(el.timestamp).getMinutes()}:
-                        {new Date(el.timestamp).getSeconds()}
-                      </span>
+            {isNewestIAQ.map((el: any, index: number) => {
+              const hasTimestamp = el.timestamp && el.timestamp > 0;
+              const dt = hasTimestamp ? new Date(el.timestamp) : null;
+              return (
+                <div key={index}>
+                  <div className="mt-5 mb-5 ml-3">
+                    <span className="border-b-[1px]">Sensor: {el.label}</span>
+                    <span className="text-[13px] text-gray-600 ml-5">
+                      Update{" "}
+                      {dt
+                        ? `${dt.getDate()}/${
+                            dt.getMonth() + 1
+                          }/${dt.getFullYear()} ${dt.getHours()}:${dt.getMinutes()}:${dt.getSeconds()}`
+                        : "-"}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 mt-3">
+                    <div className="border-[1px] border-gray-500 p-2 w-[200px] rounded-lg text-center m-auto ">
+                      <div>CO₂ (ppm)</div>
+                      <div className="mt-10 text-[23px]">
+                        {el.co2 != null ? el.co2.toFixed(2) : "-"}
+                      </div>
                     </div>
-                    <div className="grid grid-cols-3 mt-3">
-                      <div className="border-[1px] border-gray-500 p-2 w-[200px] rounded-lg text-center m-auto ">
-                        <div>CO₂ (ppm)</div>
-                        <div className="mt-10 text-[23px]">
-                          {el.co2.toFixed(2) ? el.co2.toFixed(2) : ""}
-                        </div>
+                    <div className="border-[1px] border-gray-500 p-2 w-[200px] rounded-lg text-center m-auto">
+                      <div>Temperature (C)</div>
+                      <div className="mt-10 text-[23px]">
+                        {el.temperature != null
+                          ? el.temperature.toFixed(2)
+                          : "-"}
                       </div>
-                      <div className="border-[1px] border-gray-500 p-2 w-[200px] rounded-lg text-center m-auto">
-                        <div>Temperature (C)</div>
-                        <div className="mt-10 text-[23px]">
-                          {el.temperature.toFixed(2)
-                            ? el.temperature.toFixed(2)
-                            : ""}
-                        </div>
-                      </div>
-                      <div className="border-[1px] border-gray-500 p-2 w-[200px] rounded-lg text-center m-auto">
-                        <div>Humidity (%RH)</div>
-                        <div className="mt-10 text-[23px]">
-                          {el.humidity.toFixed(2) ? el.humidity.toFixed(2) : ""}{" "}
-                          %
-                        </div>
+                    </div>
+                    <div className="border-[1px] border-gray-500 p-2 w-[200px] rounded-lg text-center m-auto">
+                      <div>Humidity (%RH)</div>
+                      <div className="mt-10 text-[23px]">
+                        {el.humidity != null ? el.humidity.toFixed(2) : "-"} %
                       </div>
                     </div>
                   </div>
-                );
-              }
-              return null;
+                </div>
+              );
             })}
           </div>
           <div className="p-4 text-[20px] font-semibold text-gray-100">
