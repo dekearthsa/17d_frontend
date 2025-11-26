@@ -4,7 +4,8 @@ import HighchartsReact from "highcharts-react-official";
 import useSWR from "swr";
 import axios from "axios";
 
-const HTTP_API = "http://localhost:3011";
+// const HTTP_API = "http://localhost:3011";
+const HTTP_API = "https://api.bkkdemoondevearth.work";
 
 type Row = {
   id?: string | number;
