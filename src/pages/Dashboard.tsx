@@ -281,6 +281,19 @@ const Dashboard = () => {
     }
   );
 
+  const modeLegend = useMemo(
+    () =>
+      Object.entries(MODE_LABEL).map(([modeStr, label]) => {
+        const mode = Number(modeStr);
+        return {
+          mode,
+          label,
+          color: MODE_COLORS[mode],
+        };
+      }),
+    []
+  );
+
   const handleExport = async () => {
     await mutate();
   };
@@ -623,6 +636,26 @@ const Dashboard = () => {
           <div className="px-4 pb-8">
             <div className="rounded-2xl border border-gray-800 bg-gray-900 shadow p-4">
               <HighchartsReact highcharts={Highcharts} options={optionsCo2} />
+              {/* Legend ของ highlight mode ใต้กราฟ */}
+              <div className="mt-4 text-xs text-gray-300">
+                <div className="mb-2 font-semibold">Mode highlight</div>
+                <div className="flex flex-wrap gap-3">
+                  {modeLegend.map((m) => (
+                    <div
+                      key={m.mode}
+                      className="flex items-center gap-2 border border-gray-700 rounded-full px-2 py-1"
+                    >
+                      <div
+                        className="w-4 h-4 rounded-full"
+                        style={{ backgroundColor: m.color }}
+                      />
+                      <span className="text-[11px] text-gray-200">
+                        {m.mode}: {m.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -632,6 +665,26 @@ const Dashboard = () => {
           </div>
           <div className="rounded-2xl border border-gray-800 bg-gray-900 shadow p-4">
             <HighchartsReact highcharts={Highcharts} options={optionsTemp} />
+            {/* Legend ของ highlight mode ใต้กราฟ */}
+            <div className="mt-4 text-xs text-gray-300">
+              <div className="mb-2 font-semibold">Mode highlight</div>
+              <div className="flex flex-wrap gap-3">
+                {modeLegend.map((m) => (
+                  <div
+                    key={m.mode}
+                    className="flex items-center gap-2 border border-gray-700 rounded-full px-2 py-1"
+                  >
+                    <div
+                      className="w-4 h-4 rounded-full"
+                      style={{ backgroundColor: m.color }}
+                    />
+                    <span className="text-[11px] text-gray-200">
+                      {m.mode}: {m.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
         <div>
@@ -640,6 +693,26 @@ const Dashboard = () => {
           </div>
           <div className="rounded-2xl border border-gray-800 bg-gray-900 shadow p-4">
             <HighchartsReact highcharts={Highcharts} options={optionsHumid} />
+            {/* Legend ของ highlight mode ใต้กราฟ */}
+            <div className="mt-4 text-xs text-gray-300">
+              <div className="mb-2 font-semibold">Mode highlight</div>
+              <div className="flex flex-wrap gap-3">
+                {modeLegend.map((m) => (
+                  <div
+                    key={m.mode}
+                    className="flex items-center gap-2 border border-gray-700 rounded-full px-2 py-1"
+                  >
+                    <div
+                      className="w-4 h-4 rounded-full"
+                      style={{ backgroundColor: m.color }}
+                    />
+                    <span className="text-[11px] text-gray-200">
+                      {m.mode}: {m.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>
