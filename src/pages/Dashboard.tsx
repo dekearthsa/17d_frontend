@@ -263,6 +263,7 @@ const Dashboard = () => {
       refreshInterval: 100000,
       onSuccess: (d: Row[]) => {
         if (!d?.length) return;
+        console.log(d);
         latesttimeRef.current = d[d.length - 1].timestamp;
         setIaq((prev) => {
           const cutoff = Date.now() - timeHis;
@@ -300,8 +301,8 @@ const Dashboard = () => {
 
   const labelSensor = (sid: string) =>
     ({
-      before_exhaust: "CO₂ Before Exhaust",
-      after_exhausts: "CO₂ After Exhaust",
+      before_scrub: "CO₂ Before Exhaust",
+      after_scrub: "CO₂ After Exhaust",
       interlock_4c: "CO₂ Interlock 4C",
       "1": "CO₂ Calibrate",
       "2": "CO₂ Outlet",
@@ -330,20 +331,20 @@ const Dashboard = () => {
   const getLastestIAQData = (rows: Row[]) => {
     // เตรียม fallback สำหรับแต่ละ sensor
     const fallbackMap: Record<string, any> = {
-      before_exhaust: {
+      before_scrub: {
         id: "-",
         label: "Inlet (Before Exhaust)",
-        sensor_id: "before_exhaust",
+        sensor_id: "before_scrub",
         timestamp: 0,
         co2: null,
         humidity: null,
         temperature: null,
         mode: null,
       },
-      after_exhausts: {
+      after_scrub: {
         id: "-",
         label: "Outlet (After Exhaust)",
-        sensor_id: "after_exhausts",
+        sensor_id: "after_scrub",
         timestamp: 0,
         co2: null,
         humidity: null,
@@ -362,12 +363,12 @@ const Dashboard = () => {
       },
     };
 
-    const targetSensors = ["before_exhaust", "after_exhausts", "interlock_4c"];
+    const targetSensors = ["before_scrub", "after_scrub", "interlock_4c"];
 
     // clone fallback
     const latest: Record<string, any> = {
-      before_exhaust: { ...fallbackMap.before_exhaust },
-      after_exhausts: { ...fallbackMap.after_exhausts },
+      before_scrub: { ...fallbackMap.before_scrub },
+      after_scrub: { ...fallbackMap.after_scrub },
       interlock_4c: { ...fallbackMap.interlock_4c },
     };
 
@@ -390,8 +391,8 @@ const Dashboard = () => {
       }
     }
 
-    const latestBefore = latest["before_exhaust"];
-    const latestAfter = latest["after_exhausts"];
+    const latestBefore = latest["before_scrub"];
+    const latestAfter = latest["after_scrub"];
     const latestInterlock = latest["interlock_4c"];
 
     setNewestIAQ([latestBefore, latestAfter, latestInterlock]);
@@ -422,8 +423,8 @@ const Dashboard = () => {
   const tempSeries = useMemo(() => {
     const label = (sid: string) =>
       ({
-        before_exhaust: "Temp Before Exhaust",
-        after_exhausts: "Temp After Exhaust",
+        before_scrub: "Temp Before Exhaust",
+        after_scrub: "Temp After Exhaust",
         interlock_4c: "Temp Interlock 4C",
         "1": "Temp Calibrate",
         "2": "Temp Outlet",
@@ -444,8 +445,8 @@ const Dashboard = () => {
   const humidSeries = useMemo(() => {
     const label = (sid: string) =>
       ({
-        before_exhaust: "Humid Before Exhaust",
-        after_exhausts: "Humid After Exhaust",
+        before_scrub: "Humid Before Exhaust",
+        after_scrub: "Humid After Exhaust",
         interlock_4c: "Humid Interlock 4C",
         "1": "Humid Calibrate",
         "2": "Humid Outlet",
