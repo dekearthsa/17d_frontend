@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef, ChangeEvent } from "react";
 import Highcharts from "highcharts";
 import HighchartsReact from "highcharts-react-official";
 import useSWR from "swr";
@@ -15,7 +15,7 @@ type Row = {
   temperature?: number; // เผื่อ backend เก่าส่งชื่อ temperature
   temp?: number; // backend ใหม่ส่ง temp
   humidity?: number;
-  mode?: number | null; // 0..5 จาก interlock_4c, exhaust = null
+  mode?: number | null; // 0..5 จาก interlock_4c, Scrub = null
 };
 
 // --- map mode → label
@@ -245,9 +245,108 @@ const Dashboard = () => {
   const [isNewestIAQ, setNewestIAQ] = useState<any[]>([]);
   const [modeOperate, setModeOperate] = useState("Mode: -");
   const [iaq, setIaq] = useState<Row[]>([]);
+  // 👇 ช่วงเวลาสำหรับดาวน์โหลด CSV (เลือกเองได้)
+  const [downloadStartMs, setDownloadStartMs] = useState<number | null>(null);
+  const [downloadEndMs, setDownloadEndMs] = useState<number | null>(null);
+
   const latesttimeRef = useRef<number>(0);
   const nowMs = useNowTicker(10000);
   const windowStart = nowMs - timeHis;
+
+  // helper แปลง ms -> format ของ <input type="datetime-local">
+  const toInputValue = (ms: number | null) => {
+    if (!ms) return "";
+    const d = new Date(ms);
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    const y = d.getFullYear();
+    const m = pad(d.getMonth() + 1);
+    const day = pad(d.getDate());
+    const h = pad(d.getHours());
+    const min = pad(d.getMinutes());
+    return `${y}-${m}-${day}T${h}:${min}`;
+  };
+
+  // set default ครั้งแรก ถ้ายังไม่ได้เลือกเอง
+  useEffect(() => {
+    if (downloadStartMs == null || downloadEndMs == null) {
+      setDownloadStartMs(windowStart);
+      setDownloadEndMs(nowMs);
+    }
+  }, [windowStart, nowMs, downloadStartMs, downloadEndMs]);
+
+  const handleChangeDownloadStart = (e: ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value; // "YYYY-MM-DDTHH:MM"
+    if (!val) {
+      setDownloadStartMs(null);
+      return;
+    }
+    const ms = new Date(val).getTime();
+    setDownloadStartMs(ms);
+  };
+
+  const handleChangeDownloadEnd = (e: ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    if (!val) {
+      setDownloadEndMs(null);
+      return;
+    }
+    const ms = new Date(val).getTime();
+    setDownloadEndMs(ms);
+  };
+
+  const handleDownloadCsv = async (type: "tongdy" | "interlock") => {
+    const endpoint =
+      type === "tongdy" ? "/download/tongdy/csv" : "/download/interlock/csv";
+
+    // ถ้า user ยังไม่เลือก ใช้ช่วงเดียวกับกราฟเป็น default
+    const startMs = downloadStartMs ?? windowStart;
+    const endMs = downloadEndMs ?? nowMs;
+
+    if (!startMs || !endMs) {
+      alert("กรุณาเลือกช่วงเวลาเริ่มต้นและสิ้นสุด");
+      return;
+    }
+    if (startMs >= endMs) {
+      alert("เวลาเริ่มต้นต้องน้อยกว่าเวลาสิ้นสุด");
+      return;
+    }
+
+    try {
+      const res = await axios.post(
+        `${HTTP_API}${endpoint}`,
+        {
+          startMs,
+          endMs,
+        },
+        {
+          responseType: "blob",
+        }
+      );
+
+      const blob = new Blob([res.data], {
+        type: "text/csv;charset=utf-8;",
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      const safe = (ts: number) =>
+        new Date(ts).toISOString().replace(/[:.]/g, "-");
+
+      const startStr = safe(startMs);
+      const endStr = safe(endMs);
+
+      link.href = url;
+      link.setAttribute("download", `${type}-data_${startStr}_${endStr}.csv`);
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("download csv error:", err);
+      alert("ดาวน์โหลด CSV ไม่สำเร็จ ลองใหม่อีกครั้ง");
+    }
+  };
 
   const { mutate } = useSWR(
     [
@@ -301,8 +400,8 @@ const Dashboard = () => {
 
   const labelSensor = (sid: string) =>
     ({
-      before_scrub: "CO₂ Before Exhaust",
-      after_scrub: "CO₂ After Exhaust",
+      before_scrub: "CO₂ Before Scrub",
+      after_scrub: "CO₂ After Scrub",
       interlock_4c: "CO₂ Interlock 4C",
       "1": "CO₂ Calibrate",
       "2": "CO₂ Outlet",
@@ -333,7 +432,7 @@ const Dashboard = () => {
     const fallbackMap: Record<string, any> = {
       before_scrub: {
         id: "-",
-        label: "Inlet (Before Exhaust)",
+        label: "Inlet (Before Scrub)",
         sensor_id: "before_scrub",
         timestamp: 0,
         co2: null,
@@ -343,7 +442,7 @@ const Dashboard = () => {
       },
       after_scrub: {
         id: "-",
-        label: "Outlet (After Exhaust)",
+        label: "Outlet (After Scrub)",
         sensor_id: "after_scrub",
         timestamp: 0,
         co2: null,
@@ -423,8 +522,8 @@ const Dashboard = () => {
   const tempSeries = useMemo(() => {
     const label = (sid: string) =>
       ({
-        before_scrub: "Temp Before Exhaust",
-        after_scrub: "Temp After Exhaust",
+        before_scrub: "Temp Before Scrub",
+        after_scrub: "Temp After Scrub",
         interlock_4c: "Temp Interlock 4C",
         "1": "Temp Calibrate",
         "2": "Temp Outlet",
@@ -445,8 +544,8 @@ const Dashboard = () => {
   const humidSeries = useMemo(() => {
     const label = (sid: string) =>
       ({
-        before_scrub: "Humid Before Exhaust",
-        after_scrub: "Humid After Exhaust",
+        before_scrub: "Humid Before Scrub",
+        after_scrub: "Humid After Scrub",
         interlock_4c: "Humid Interlock 4C",
         "1": "Humid Calibrate",
         "2": "Humid Outlet",
@@ -509,7 +608,56 @@ const Dashboard = () => {
         <div className="flex justify-between">
           <div className="p-4">
             <div>{modeOperate}</div>
+            {/* 👇 Widget เลือกวันที่/เวลา + download CSV */}
+            <div className="mt-6">
+              <div className="mr-10 mb-2">
+                <label>Download CSV</label>
+              </div>
+              <div className="items-center gap-3">
+                <div className="flex flex-col w-[200px] ">
+                  <span className="mb-1 text-[11px] text-gray-400">Start</span>
+                  <input
+                    type="datetime-local"
+                    className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-100"
+                    value={toInputValue(downloadStartMs)}
+                    onChange={handleChangeDownloadStart}
+                  />
+                </div>
+                <div className="flex flex-col w-[200px] ">
+                  <span className="mb-1 text-[11px] text-gray-400">End</span>
+                  <input
+                    type="datetime-local"
+                    className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-100"
+                    value={toInputValue(downloadEndMs)}
+                    onChange={handleChangeDownloadEnd}
+                  />
+                </div>
+
+                <div className="mt-4">
+                  <button
+                    className="border border-gray-700 px-3 py-2 rounded-lg hover:bg-gray-800 text-xs mr-4"
+                    onClick={() => handleDownloadCsv("tongdy")}
+                  >
+                    Download Tongdy CSV
+                  </button>
+                  <button
+                    className="border border-gray-700 px-3 py-2 rounded-lg hover:bg-gray-800 text-xs"
+                    onClick={() => handleDownloadCsv("interlock")}
+                  >
+                    Download Interlock CSV
+                  </button>
+                </div>
+              </div>
+
+              {/* <div className="mt-1 text-[11px] text-gray-500">
+                ถ้าไม่เลือกเวลา ระบบจะใช้ช่วงเดียวกับกราฟ (
+                {new Date(windowStart).toLocaleString("th-TH")} –{" "}
+                {new Date(nowMs).toLocaleString("th-TH")})
+              </div> */}
+            </div>
+            {/* 👆 จบ widget download */}
           </div>
+
           <div className="p-4  text-[12px]">
             <div className="">
               <div className="mr-10 mb-2">
