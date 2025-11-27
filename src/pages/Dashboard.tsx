@@ -274,7 +274,7 @@ const Dashboard = () => {
     }
   }, [windowStart, nowMs, downloadStartMs, downloadEndMs]);
 
-  const handleChangeDownloadStart = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleChangeDownloadStart = (e: any) => {
     const val = e.target.value; // "YYYY-MM-DDTHH:MM"
     if (!val) {
       setDownloadStartMs(null);
@@ -284,7 +284,7 @@ const Dashboard = () => {
     setDownloadStartMs(ms);
   };
 
-  const handleChangeDownloadEnd = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleChangeDownloadEnd = (e: any) => {
     const val = e.target.value;
     if (!val) {
       setDownloadEndMs(null);
