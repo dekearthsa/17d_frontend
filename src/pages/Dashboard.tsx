@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef, ChangeEvent } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import Highcharts from "highcharts";
 import HighchartsReact from "highcharts-react-official";
 import useSWR from "swr";
