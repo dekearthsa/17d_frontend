@@ -7,6 +7,36 @@ import axios from "axios";
 // const HTTP_API = "http://localhost:3011";
 const HTTP_API = "https://api.bkkdemoondevearth.work";
 
+type AdjustFormState = {
+  adjust_name: string;
+  after_exhausts_plus: string;
+  after_exhausts_multiplier: string;
+  after_exhausts_offset: string;
+  before_exhaust_plus: string;
+  before_exhaust_multiplier: string;
+  before_exhaust_offset: string;
+  interlock_4c_plus: string;
+  interlock_4c_multiplier: string;
+  interlock_4c_offset: string;
+};
+
+type HlrSetting = {
+  id: number;
+  adjust_name: string;
+  is_active: number;
+  create_at: number | null;
+  update_at: number | null;
+  after_exhausts_plus: number;
+  after_exhausts_multiplier: number;
+  after_exhausts_offset: number;
+  before_exhaust_plus: number;
+  before_exhaust_multiplier: number;
+  before_exhaust_offset: number;
+  interlock_4c_plus: number;
+  interlock_4c_multiplier: number;
+  interlock_4c_offset: number;
+};
+
 type Row = {
   id?: string | number;
   sensor_id: string | number;
@@ -248,10 +278,213 @@ const Dashboard = () => {
   // 👇 ช่วงเวลาสำหรับดาวน์โหลด CSV (เลือกเองได้)
   const [downloadStartMs, setDownloadStartMs] = useState<number | null>(null);
   const [downloadEndMs, setDownloadEndMs] = useState<number | null>(null);
+  const [showAdjustModal, setShowAdjustModal] = useState(false);
+  const [settings, setSettings] = useState<HlrSetting[]>([]);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(false);
+  const [showPresetModal, setShowPresetModal] = useState(false); // 👈 ใหม่
+
+  const [adjustForm, setAdjustForm] = useState<AdjustFormState>({
+    adjust_name: "default",
+    after_exhausts_plus: "52.831276",
+    after_exhausts_multiplier: "1.0640014",
+    after_exhausts_offset: "0",
+    before_exhaust_plus: "55.215733",
+    before_exhaust_multiplier: "1.072297996",
+    before_exhaust_offset: "0",
+    interlock_4c_plus: "16.238157",
+    interlock_4c_multiplier: "1.048766343",
+    interlock_4c_offset: "0",
+  });
+
+  const [isSavingAdjust, setIsSavingAdjust] = useState(false);
+  const [adjustError, setAdjustError] = useState<string | null>(null);
 
   const latesttimeRef = useRef<number>(0);
   const nowMs = useNowTicker(10000);
   const windowStart = nowMs - timeHis;
+
+  // แก้ค่าฟอร์มทีละช่อง
+  const handleAdjustFieldChange = (
+    field: keyof AdjustFormState,
+    value: string
+  ) => {
+    setAdjustForm((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  // 👇 ใหม่: modal แสดงรายการ preset
+  const openPresetModal = () => {
+    setAdjustError(null);
+    setShowPresetModal(true);
+    fetchSettings(); // โหลดรายการ preset ทุกครั้งที่เปิด
+  };
+
+  const closePresetModal = () => {
+    if (!isSavingAdjust) {
+      setShowPresetModal(false);
+    }
+  };
+
+  const fetchSettings = async () => {
+    try {
+      setIsLoadingSettings(true);
+      setAdjustError(null);
+
+      const res = await axios.get(`${HTTP_API}/get/setting_hlr`);
+      const list: HlrSetting[] = res.data?.data ?? [];
+      setSettings(list);
+    } catch (err) {
+      console.error("fetch settings error:", err);
+      setAdjustError("โหลดรายการ preset ไม่สำเร็จ");
+    } finally {
+      setIsLoadingSettings(false);
+    }
+  };
+  const handleLoadPresetToForm = (s: HlrSetting) => {
+    setAdjustForm({
+      adjust_name: s.adjust_name,
+      after_exhausts_plus: String(s.after_exhausts_plus ?? ""),
+      after_exhausts_multiplier: String(s.after_exhausts_multiplier ?? ""),
+      after_exhausts_offset: String(s.after_exhausts_offset ?? ""),
+      before_exhaust_plus: String(s.before_exhaust_plus ?? ""),
+      before_exhaust_multiplier: String(s.before_exhaust_multiplier ?? ""),
+      before_exhaust_offset: String(s.before_exhaust_offset ?? ""),
+      interlock_4c_plus: String(s.interlock_4c_plus ?? ""),
+      interlock_4c_multiplier: String(s.interlock_4c_multiplier ?? ""),
+      interlock_4c_offset: String(s.interlock_4c_offset ?? ""),
+    });
+
+    // ถ้าเรียกจาก popup presets ก็ให้เปิดหน้าตั้งค่าขึ้นมาเลย
+    setShowAdjustModal(true);
+  };
+
+  const handleUsePresetFromList = async (name: string) => {
+    try {
+      setIsSavingAdjust(true);
+      setAdjustError(null);
+
+      await axios.post(`${HTTP_API}/adjust/active`, {
+        adjust_name: name,
+      });
+
+      await axios.post(`${HTTP_API}/adjust/usage`, {
+        adjust_name: name,
+      });
+
+      await mutate(); // refresh กราฟให้ใช้ active preset ใหม่
+
+      alert(`ใช้ preset "${name}" เป็น active เรียบร้อย`);
+
+      // ปิด popup ที่เกี่ยวข้อง
+      setShowPresetModal(false);
+      setShowAdjustModal(false);
+    } catch (err) {
+      console.error("use preset error:", err);
+      setAdjustError("ใช้ preset ไม่สำเร็จ ลองใหม่อีกครั้ง");
+    } finally {
+      setIsSavingAdjust(false);
+    }
+  };
+
+  const openAdjustModal = () => {
+    setAdjustError(null);
+    setShowAdjustModal(true);
+    fetchSettings(); // โหลด preset ปัจจุบันมาแสดงใน modal
+  };
+
+  const closeAdjustModal = () => {
+    if (!isSavingAdjust) {
+      setShowAdjustModal(false);
+    }
+  };
+
+  const toNumberOrUndefined = (value: string) => {
+    if (value === "" || value == null) return undefined;
+    const num = Number(value);
+    return Number.isFinite(num) ? num : undefined;
+  };
+
+  const buildAdjustPayload = () => {
+    const name = adjustForm.adjust_name.trim() || "default";
+    return {
+      adjust_name: name,
+      after_exhausts_plus: toNumberOrUndefined(adjustForm.after_exhausts_plus),
+      after_exhausts_multiplier: toNumberOrUndefined(
+        adjustForm.after_exhausts_multiplier
+      ),
+      after_exhausts_offset: toNumberOrUndefined(
+        adjustForm.after_exhausts_offset
+      ),
+      before_exhaust_plus: toNumberOrUndefined(adjustForm.before_exhaust_plus),
+      before_exhaust_multiplier: toNumberOrUndefined(
+        adjustForm.before_exhaust_multiplier
+      ),
+      before_exhaust_offset: toNumberOrUndefined(
+        adjustForm.before_exhaust_offset
+      ),
+      interlock_4c_plus: toNumberOrUndefined(adjustForm.interlock_4c_plus),
+      interlock_4c_multiplier: toNumberOrUndefined(
+        adjustForm.interlock_4c_multiplier
+      ),
+      interlock_4c_offset: toNumberOrUndefined(adjustForm.interlock_4c_offset),
+    };
+  };
+
+  const handleSaveAdjust = async () => {
+    try {
+      setIsSavingAdjust(true);
+      setAdjustError(null);
+
+      const payload = buildAdjustPayload();
+
+      // ✅ บันทึก preset อย่างเดียว ยังไม่ active
+      await axios.post(`${HTTP_API}/update/setting_adjust`, payload);
+
+      alert("บันทึกค่า HLR adjust สำเร็จ (แต่ยังไม่ได้ใช้งานเป็น preset หลัก)");
+    } catch (err) {
+      console.error("save adjust error:", err);
+      setAdjustError("บันทึกค่าไม่สำเร็จ ลองใหม่อีกครั้ง");
+    } finally {
+      setIsSavingAdjust(false);
+    }
+  };
+
+  const handleApplyAdjust = async () => {
+    try {
+      setIsSavingAdjust(true);
+      setAdjustError(null);
+
+      const payload = buildAdjustPayload();
+
+      // 1) อัปเดต/สร้าง preset
+      await axios.post(`${HTTP_API}/update/setting_adjust`, payload);
+
+      // 2) ตั้ง preset นี้ให้ active
+      await axios.post(`${HTTP_API}/adjust/active`, {
+        adjust_name: payload.adjust_name,
+      });
+
+      // 3) log การใช้งาน
+      await axios.post(`${HTTP_API}/adjust/usage`, {
+        adjust_name: payload.adjust_name,
+      });
+
+      // 4) refresh กราฟ ให้ใช้ค่า active ใหม่ทันที
+      await mutate();
+
+      alert(
+        `ใช้ setting "${payload.adjust_name}" เป็น preset หลักและบันทึกประวัติเรียบร้อย`
+      );
+      setShowAdjustModal(false);
+    } catch (err) {
+      console.error("apply adjust error:", err);
+      setAdjustError("ใช้ setting ไม่สำเร็จ ลองใหม่อีกครั้ง");
+    } finally {
+      setIsSavingAdjust(false);
+    }
+  };
 
   // helper แปลง ms -> format ของ <input type="datetime-local">
   const toInputValue = (ms: number | null) => {
@@ -348,6 +581,7 @@ const Dashboard = () => {
     }
   };
 
+  // fastfixed mode
   const { mutate } = useSWR(
     [
       `${HTTP_API}/loop/data/iaq`,
@@ -362,17 +596,33 @@ const Dashboard = () => {
       refreshInterval: 100000,
       onSuccess: (d: Row[]) => {
         if (!d?.length) return;
-        console.log(d);
-        latesttimeRef.current = d[d.length - 1].timestamp;
+
+        // 👇 ปรับ co2 เฉพาะ before_scrub
+        const adjusted = d.map((row) => {
+          if (String(row.sensor_id) === "before_scrub") {
+            const original = row.co2 ?? 0;
+            return {
+              ...row,
+              co2: original - 66.88, // หรือ Math.max(original - 66.88, 0) ถ้าไม่อยากติดลบ
+            };
+          }
+          return row;
+        });
+
+        console.log(adjusted);
+        latesttimeRef.current = adjusted[adjusted.length - 1].timestamp;
+
         setIaq((prev) => {
           const cutoff = Date.now() - timeHis;
-          const merged = [...prev, ...d];
+          const merged = [...prev, ...adjusted];
           const map = new Map<string, Row>();
+
           for (const r of merged) {
             const key =
               r.id != null ? String(r.id) : `${r.sensor_id}-${r.timestamp}`;
             map.set(key, r); // ของใหม่ทับของเก่า
           }
+
           return Array.from(map.values())
             .filter((r) => r.timestamp >= cutoff)
             .sort((a, b) => a.timestamp - b.timestamp);
@@ -380,6 +630,39 @@ const Dashboard = () => {
       },
     }
   );
+
+  // const { mutate } = useSWR(
+  //   [
+  //     `${HTTP_API}/loop/data/iaq`,
+  //     {
+  //       start: Date.now() - timeHis,
+  //       latesttime: latesttimeRef.current || 0,
+  //       rangeSelected: 0,
+  //     },
+  //   ],
+  //   postFetcher,
+  //   {
+  //     refreshInterval: 100000,
+  //     onSuccess: (d: Row[]) => {
+  //       if (!d?.length) return;
+  //       console.log(d);
+  //       latesttimeRef.current = d[d.length - 1].timestamp;
+  //       setIaq((prev) => {
+  //         const cutoff = Date.now() - timeHis;
+  //         const merged = [...prev, ...d];
+  //         const map = new Map<string, Row>();
+  //         for (const r of merged) {
+  //           const key =
+  //             r.id != null ? String(r.id) : `${r.sensor_id}-${r.timestamp}`;
+  //           map.set(key, r); // ของใหม่ทับของเก่า
+  //         }
+  //         return Array.from(map.values())
+  //           .filter((r) => r.timestamp >= cutoff)
+  //           .sort((a, b) => a.timestamp - b.timestamp);
+  //       });
+  //     },
+  //   }
+  // );
 
   const modeLegend = useMemo(
     () =>
@@ -731,6 +1014,159 @@ const Dashboard = () => {
                   30MIN
                 </button>
               </div>
+              <div className="flex"></div>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  className="border border-indigo-500 text-[11px] px-3 py-2 rounded-lg hover:bg-indigo-600/20"
+                  onClick={openAdjustModal}
+                >
+                  ตั้งค่า HLR Adjust
+                </button>
+
+                <button
+                  className="border border-sky-500 text-[11px] px-3 py-2 rounded-lg hover:bg-sky-600/20"
+                  onClick={openPresetModal}
+                >
+                  รายการ Preset
+                </button>
+              </div>
+
+              {showPresetModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+                  <div className="bg-gray-900 border border-gray-700 rounded-2xl w-[95%] max-w-3xl p-5 shadow-xl">
+                    <div className="flex justify-between items-center mb-4">
+                      <h2 className="text-sm font-semibold text-gray-100">
+                        รายการ HLR Adjust Preset
+                      </h2>
+                      <button
+                        className="text-gray-400 hover:text-gray-200 text-lg"
+                        onClick={closePresetModal}
+                        disabled={isSavingAdjust}
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-xs font-semibold text-gray-100">
+                        รายการ HLR Adjust Preset
+                      </span>
+                      <button
+                        className="text-[11px] px-2 py-1 border border-gray-600 rounded-lg hover:bg-gray-800 disabled:opacity-50"
+                        onClick={fetchSettings}
+                        disabled={isLoadingSettings || isSavingAdjust}
+                      >
+                        รีเฟรชรายการ
+                      </button>
+                    </div>
+
+                    {isLoadingSettings ? (
+                      <div className="text-[11px] text-gray-400">
+                        กำลังโหลด preset ...
+                      </div>
+                    ) : settings.length === 0 ? (
+                      <div className="text-[11px] text-gray-500">
+                        ยังไม่มี preset ในระบบ (จะถูกสร้างเมื่อคุณกด
+                        "บันทึกค่า")
+                      </div>
+                    ) : (
+                      <div className="max-h-72 overflow-y-auto border border-gray-700 rounded-xl">
+                        <table className="w-full text-[11px]">
+                          <thead className="bg-gray-950/70">
+                            <tr className="text-gray-400">
+                              <th className="px-3 py-2 text-left">Preset</th>
+                              <th className="px-3 py-2 text-left">สถานะ</th>
+                              <th className="px-3 py-2 text-left">
+                                อัปเดตล่าสุด
+                              </th>
+                              <th className="px-3 py-2 text-right">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {settings.map((s) => {
+                              const updated = s.update_at
+                                ? new Date(s.update_at)
+                                : s.create_at
+                                ? new Date(s.create_at)
+                                : null;
+                              const updatedStr = updated
+                                ? `${updated.getDate()}/${
+                                    updated.getMonth() + 1
+                                  }/${updated.getFullYear()} ${updated
+                                    .getHours()
+                                    .toString()
+                                    .padStart(2, "0")}:${updated
+                                    .getMinutes()
+                                    .toString()
+                                    .padStart(2, "0")}`
+                                : "-";
+
+                              return (
+                                <tr
+                                  key={s.id}
+                                  className="border-t border-gray-800 hover:bg-gray-800/40"
+                                >
+                                  <td className="px-3 py-2 text-gray-100">
+                                    {s.adjust_name}
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    {s.is_active === 1 ? (
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                        Active
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-gray-700/40 text-gray-300 border border-gray-600/60">
+                                        Inactive
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2 text-gray-300">
+                                    {updatedStr}
+                                  </td>
+                                  <td className="px-3 py-2 text-right space-x-2">
+                                    <button
+                                      className="px-2 py-1 border border-gray-600 rounded-lg text-[10px] text-gray-200 hover:bg-gray-800"
+                                      onClick={() => handleLoadPresetToForm(s)}
+                                      disabled={isSavingAdjust}
+                                    >
+                                      โหลดค่า
+                                    </button>
+                                    <button
+                                      className="px-2 py-1 border border-indigo-500 rounded-lg text-[10px] text-indigo-100 bg-indigo-600/20 hover:bg-indigo-600/30 disabled:opacity-50"
+                                      onClick={() =>
+                                        handleUsePresetFromList(s.adjust_name)
+                                      }
+                                      disabled={isSavingAdjust}
+                                    >
+                                      ใช้ preset นี้
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {adjustError && (
+                      <div className="mt-3 text-[11px] text-red-400">
+                        {adjustError}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ปุ่มเปิด HLR Adjust Setting */}
+              {/* <div className="mt-4 flex justify-end">
+                <button
+                  className="border border-indigo-500 text-[11px] px-3 py-2 rounded-lg hover:bg-indigo-600/20"
+                  onClick={openAdjustModal}
+                >
+                  เปิด HLR Adjust Setting
+                </button>
+              </div> */}
             </div>
           </div>
         </div>
@@ -865,6 +1301,230 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
+      {showAdjustModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl w-[95%] max-w-4xl p-5 shadow-xl">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-sm font-semibold text-gray-100">
+                HLR Adjust Setting
+              </h2>
+              <button
+                className="text-gray-400 hover:text-gray-200 text-lg"
+                onClick={closeAdjustModal}
+                disabled={isSavingAdjust}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-[11px] text-gray-400 mb-1">
+                Adjust Name (preset)
+              </label>
+              <input
+                type="text"
+                className="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-xs text-gray-100"
+                value={adjustForm.adjust_name}
+                onChange={(e) =>
+                  handleAdjustFieldChange("adjust_name", e.target.value)
+                }
+                placeholder="เช่น default, shop_A, lab_test"
+              />
+            </div>
+
+            {/* แบ่งเป็น 3 กลุ่ม: after / before / interlock */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-[11px]">
+              {/* AFTER EXHAUSTS */}
+              <div className="border border-gray-700 rounded-xl p-3">
+                <div className="mb-2 font-semibold text-gray-100 text-xs">
+                  After Exhausts
+                </div>
+                <div className="space-y-2">
+                  <div>
+                    <label className="block text-gray-400 mb-1">plus</label>
+                    <input
+                      type="number"
+                      className="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-xs text-gray-100"
+                      value={adjustForm.after_exhausts_plus}
+                      onChange={(e) =>
+                        handleAdjustFieldChange(
+                          "after_exhausts_plus",
+                          e.target.value
+                        )
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-400 mb-1">
+                      multiplier
+                    </label>
+                    <input
+                      type="number"
+                      step="0.000001"
+                      className="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-xs text-gray-100"
+                      value={adjustForm.after_exhausts_multiplier}
+                      onChange={(e) =>
+                        handleAdjustFieldChange(
+                          "after_exhausts_multiplier",
+                          e.target.value
+                        )
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-400 mb-1">offset</label>
+                    <input
+                      type="number"
+                      className="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-xs text-gray-100"
+                      value={adjustForm.after_exhausts_offset}
+                      onChange={(e) =>
+                        handleAdjustFieldChange(
+                          "after_exhausts_offset",
+                          e.target.value
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* BEFORE EXHAUST */}
+              <div className="border border-gray-700 rounded-xl p-3">
+                <div className="mb-2 font-semibold text-gray-100 text-xs">
+                  Before Exhaust
+                </div>
+                <div className="space-y-2">
+                  <div>
+                    <label className="block text-gray-400 mb-1">plus</label>
+                    <input
+                      type="number"
+                      className="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-xs text-gray-100"
+                      value={adjustForm.before_exhaust_plus}
+                      onChange={(e) =>
+                        handleAdjustFieldChange(
+                          "before_exhaust_plus",
+                          e.target.value
+                        )
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-400 mb-1">
+                      multiplier
+                    </label>
+                    <input
+                      type="number"
+                      step="0.000001"
+                      className="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-xs text-gray-100"
+                      value={adjustForm.before_exhaust_multiplier}
+                      onChange={(e) =>
+                        handleAdjustFieldChange(
+                          "before_exhaust_multiplier",
+                          e.target.value
+                        )
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-400 mb-1">offset</label>
+                    <input
+                      type="number"
+                      className="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-xs text-gray-100"
+                      value={adjustForm.before_exhaust_offset}
+                      onChange={(e) =>
+                        handleAdjustFieldChange(
+                          "before_exhaust_offset",
+                          e.target.value
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* INTERLOCK 4C */}
+              <div className="border border-gray-700 rounded-xl p-3">
+                <div className="mb-2 font-semibold text-gray-100 text-xs">
+                  Interlock 4C
+                </div>
+                <div className="space-y-2">
+                  <div>
+                    <label className="block text-gray-400 mb-1">plus</label>
+                    <input
+                      type="number"
+                      className="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-xs text-gray-100"
+                      value={adjustForm.interlock_4c_plus}
+                      onChange={(e) =>
+                        handleAdjustFieldChange(
+                          "interlock_4c_plus",
+                          e.target.value
+                        )
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-400 mb-1">
+                      multiplier
+                    </label>
+                    <input
+                      type="number"
+                      step="0.000001"
+                      className="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-xs text-gray-100"
+                      value={adjustForm.interlock_4c_multiplier}
+                      onChange={(e) =>
+                        handleAdjustFieldChange(
+                          "interlock_4c_multiplier",
+                          e.target.value
+                        )
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-400 mb-1">offset</label>
+                    <input
+                      type="number"
+                      className="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-xs text-gray-100"
+                      value={adjustForm.interlock_4c_offset}
+                      onChange={(e) =>
+                        handleAdjustFieldChange(
+                          "interlock_4c_offset",
+                          e.target.value
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {adjustError && (
+              <div className="mt-3 text-[11px] text-red-400">{adjustError}</div>
+            )}
+
+            <div className="mt-5 flex justify-between items-center text-[11px]">
+              <span className="text-gray-500">
+                ช่องไหนเว้นว่าง ระบบจะใช้ค่าปัจจุบัน / ค่า default แทน
+              </span>
+              <div className="flex gap-2">
+                <button
+                  className="px-3 py-1.5 border border-gray-600 rounded-lg text-gray-200 hover:bg-gray-800 disabled:opacity-50"
+                  onClick={handleSaveAdjust}
+                  disabled={isSavingAdjust}
+                >
+                  บันทึกค่า
+                </button>
+                <button
+                  className="px-3 py-1.5 border border-indigo-500 bg-indigo-600/20 rounded-lg text-indigo-100 hover:bg-indigo-600/30 disabled:opacity-50"
+                  onClick={handleApplyAdjust}
+                  disabled={isSavingAdjust}
+                >
+                  บันทึกและใช้งานทันทีนี้
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
